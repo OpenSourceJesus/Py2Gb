@@ -165,6 +165,16 @@ def _eval_color_node(node, resolve_name):
 	return None
 
 
+def _attr_path(node):
+	if isinstance(node, ast.Name):
+		return node.id
+	if isinstance(node, ast.Attribute):
+		base = _attr_path(node.value)
+		if base:
+			return base + "." + node.attr
+	return None
+
+
 def _parse_builtin_circle_call(call_node, resolve_name):
 	name = resolve_name(call_node.func)
 	if name != "pygame.draw.circle" or len(call_node.args) < 4:
@@ -192,6 +202,27 @@ def _parse_builtin_circle_call(call_node, resolve_name):
 	}
 
 
+def _parse_surface_size(node, resolve_name):
+	size = _eval_vector2_node(node, resolve_name)
+	if size is None:
+		return None
+	w = max(1, int(round(float(size[0]))))
+	h = max(1, int(round(float(size[1]))))
+	return [w, h]
+
+
+def _resolve_surface_ref(node, owner_name, refs):
+	path = _attr_path(node)
+	if not path:
+		return None
+	if path in refs:
+		return refs[path]
+	if owner_name and path.startswith("this."):
+		member = path.split(".", 1)[1]
+		return {"owner_name": owner_name, "member": member}
+	return None
+
+
 def _script_calls_pygame_quit(py_code: str):
 	try:
 		tree = ast.parse(py_code)
@@ -204,8 +235,8 @@ def _script_calls_pygame_quit(py_code: str):
 	return False
 
 
-def extract_builtin_script_info(py_code: str):
-	output = {"uses_quit": False, "circle_ops": [], "only_builtin": True}
+def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
+	output = {"uses_quit": False, "circle_ops": [], "surface_ops": [], "only_builtin": True}
 	try:
 		tree = ast.parse(py_code)
 	except Exception:
@@ -213,16 +244,109 @@ def extract_builtin_script_info(py_code: str):
 		output["uses_quit"] = _script_calls_pygame_quit(py_code)
 		return output
 	resolve_name = _build_pygame_resolver(tree)
+	surface_refs = {}
+	if owner_name:
+		surface_refs["this.surface"] = {"owner_name": owner_name, "member": "surface"}
 	for stmt in tree.body:
 		if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) and isinstance(stmt.value.value, str):
 			continue
 		if isinstance(stmt, (ast.Import, ast.ImportFrom, ast.Pass)):
 			continue
+		if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1:
+			target = stmt.targets[0]
+			target_path = _attr_path(target)
+			if target_path:
+				value = stmt.value
+				if isinstance(value, ast.Call) and resolve_name(value.func) == "pygame.Surface" and len(value.args) >= 1:
+					size = _parse_surface_size(value.args[0], resolve_name)
+					if size is not None:
+						ref = {"owner_name": owner_name, "member": None}
+						if owner_name:
+							if target_path.startswith("this."):
+								ref["member"] = target_path.split(".", 1)[1]
+							else:
+								ref["member"] = "__local_" + safe_symbol(target_path)
+						surface_refs[target_path] = ref
+						if ref["member"] is not None:
+							output["surface_ops"].append(
+								{
+									"op": "create_surface_member",
+									"owner_name": owner_name,
+									"member": ref["member"],
+									"size": size,
+								}
+							)
+						continue
+				src_ref = _resolve_surface_ref(value, owner_name, surface_refs)
+				if src_ref is not None:
+					surface_refs[target_path] = src_ref
+					if owner_name and target_path.startswith("this."):
+						dst_member = target_path.split(".", 1)[1]
+						output["surface_ops"].append(
+							{
+								"op": "assign_surface_member",
+								"owner_name": owner_name,
+								"member": dst_member,
+								"src_owner_name": src_ref.get("owner_name"),
+								"src_member": src_ref.get("member"),
+							}
+						)
+					continue
 		if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
 			call_name = resolve_name(stmt.value.func)
 			if call_name == "pygame.quit":
 				output["uses_quit"] = True
 				continue
+			fill_func = stmt.value.func
+			if isinstance(fill_func, ast.Attribute) and fill_func.attr == "fill" and len(stmt.value.args) >= 1:
+				surface_ref = _resolve_surface_ref(fill_func.value, owner_name, surface_refs)
+				color = _eval_color_node(stmt.value.args[0], resolve_name)
+				if surface_ref is not None and color is not None and surface_ref.get("member") is not None:
+					output["surface_ops"].append(
+						{
+							"op": "fill_surface_member",
+							"owner_name": surface_ref.get("owner_name"),
+							"member": surface_ref.get("member"),
+							"color": [
+								max(0, min(255, color[0])),
+								max(0, min(255, color[1])),
+								max(0, min(255, color[2])),
+								max(0, min(255, color[3])),
+							],
+						}
+					)
+					continue
+			if call_name == "pygame.draw.circle" and len(stmt.value.args) >= 4:
+				surface_ref = _resolve_surface_ref(stmt.value.args[0], owner_name, surface_refs)
+				color = _eval_color_node(stmt.value.args[1], resolve_name)
+				center = _eval_vector2_node(stmt.value.args[2], resolve_name)
+				radius = _eval_number_node(stmt.value.args[3])
+				width = _eval_number_node(stmt.value.args[4]) if len(stmt.value.args) >= 5 else 0.0
+				if (
+					surface_ref is not None
+					and surface_ref.get("member") is not None
+					and color is not None
+					and center is not None
+					and radius is not None
+					and width is not None
+				):
+					output["surface_ops"].append(
+						{
+							"op": "draw_circle_surface_member",
+							"owner_name": surface_ref.get("owner_name"),
+							"member": surface_ref.get("member"),
+							"center": [float(center[0]), float(center[1])],
+							"radius": max(0.0, float(radius)),
+							"color": [
+								max(0, min(255, color[0])),
+								max(0, min(255, color[1])),
+								max(0, min(255, color[2])),
+								max(0, min(255, color[3])),
+							],
+							"width": max(0.0, float(width)),
+						}
+					)
+					continue
 			circle = _parse_builtin_circle_call(stmt.value, resolve_name)
 			if circle is not None:
 				output["circle_ops"].append(circle)
@@ -253,6 +377,7 @@ def export_gba_py_assembly(
 	init_draw_circles = []
 	update_draw_circles = []
 	builtin_only_quit = True
+	surface_ops = []
 	sym_i = 0
 	for entry in script_entries:
 		script_txt = entry["code"]
@@ -260,7 +385,7 @@ def export_gba_py_assembly(
 		script_obj = entry.get("script_obj")
 		sym_hint = entry.get("symbol_hint", "script")
 		script_count += 1
-		builtin_info = extract_builtin_script_info(script_txt)
+		builtin_info = extract_builtin_script_info(script_txt, owner_name=entry.get("owner_name"))
 		uses_quit = bool(builtin_info["uses_quit"])
 		if is_init and uses_quit:
 			init_quit = True
@@ -270,6 +395,7 @@ def export_gba_py_assembly(
 			init_draw_circles += builtin_info["circle_ops"]
 		else:
 			update_draw_circles += builtin_info["circle_ops"]
+		surface_ops += builtin_info.get("surface_ops", [])
 		if not builtin_info["only_builtin"]:
 			builtin_only_quit = False
 		sym_i += 1
@@ -306,6 +432,10 @@ def export_gba_py_assembly(
 			print(
 				"Built-in bitmap ROM hook: pygame.draw.circle() from update scripts is baked once at export time (static snapshot)."
 			)
+		if surface_ops:
+			print(
+				"Built-in bitmap ROM hook: pygame.Surface member changes in gba-py scripts are baked into exported image surfaces."
+			)
 		if script_count > 0 and not builtin_only_quit:
 			print(
 				"Note: exported gba-py assembly is not auto-linked/called by the built-in bitmap ROM; "
@@ -317,5 +447,6 @@ def export_gba_py_assembly(
 		"update_quit": update_quit,
 		"init_draw_circles": init_draw_circles,
 		"update_draw_circles": update_draw_circles,
+		"surface_ops": surface_ops,
 		"builtin_only_quit": builtin_only_quit,
 	}
