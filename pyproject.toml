@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "py2gba"
+version = "0.0.1"
+description = "Stub CLI: Python to GBA Thumb assembly (placeholder for a real transpiler)"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["py2gba*"]
+
+[project.scripts]
+py2gba = "py2gba.__main__:main"
