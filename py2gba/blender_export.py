@@ -188,7 +188,6 @@ def _parse_builtin_circle_call(call_node, resolve_name):
 	width = _eval_number_node(call_node.args[4]) if len(call_node.args) >= 5 else 0.0
 	if color is None or center is None or radius is None or width is None:
 		return None
-	center = [center[0], -center[1]]
 	return {
 		"center": [center[0], center[1]],
 		"radius": max(0.0, float(radius)),
