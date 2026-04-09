@@ -1,8 +1,7 @@
 """CLI: py2gba input.py -o out.s --symbol NAME --kind init|update.
 
-The current backend emits a valid Thumb symbol plus pygame ABI bridge stubs.
-It is intentionally conservative: unsupported pygame calls are reported and can
-optionally fail the build with --strict-pygame.
+This backend emits lightweight, target-specific assembly entrypoints.
+It validates pygame usage but does not emit pygame ABI bridge stubs.
 """
 
 import argparse
@@ -10,79 +9,107 @@ import sys
 from pathlib import Path
 
 from py2gba.pygame_api import (
+	analyze_key_get_pressed_indices,
 	analyze_pygame_usage,
-	build_pygame_abi_stubs,
-	ordered_top_level_pygame_calls,
 	safe_symbol,
 )
 
 
-def emit_stub(py_source: str, symbol_base: str, kind: str, strict_pygame: bool = False) -> str:
+def emit_asm(
+	py_source: str,
+	symbol_base: str,
+	kind: str,
+	target: str = "gba",
+	strict_pygame: bool = False,
+) -> str:
 	base = safe_symbol(symbol_base)
 	suffix = "init" if kind == "init" else "update"
 	label = "%s_%s" % (base, suffix)
 	used, supported, unsupported = analyze_pygame_usage(py_source)
+	key_used, key_supported, key_unsupported = analyze_key_get_pressed_indices(py_source)
 	if strict_pygame and unsupported:
 		raise ValueError(
 			"Unsupported pygame API calls: " + ", ".join(sorted(unsupported))
 		)
+	if strict_pygame and key_unsupported:
+		raise ValueError(
+			"Unsupported pygame key constants for get_pressed indexing: "
+			+ ", ".join(sorted(key_unsupported))
+		)
+	comment_prefix = ";" if target == "gbc" else "@"
 	lines = [
-		"@ py2gba pygame-aware stub backend",
-		"@ kind=%s symbol=%s" % (kind, label),
-		"@ used pygame calls=%i supported=%i unsupported=%i"
-		% (len(used), len(supported), len(unsupported)),
+		"%s py2gba lightweight backend" % comment_prefix,
+		"%s target=%s kind=%s symbol=%s" % (comment_prefix, target, kind, label),
+		"%s used pygame calls=%i supported=%i unsupported=%i"
+		% (comment_prefix, len(used), len(supported), len(unsupported)),
+		"%s used key constants=%i supported=%i unsupported=%i"
+		% (comment_prefix, len(key_used), len(key_supported), len(key_unsupported)),
 		"",
 	]
 	if supported:
-		lines.append("@ supported pygame calls:")
+		lines.append("%s supported pygame calls:" % comment_prefix)
 		for name in sorted(supported):
-			lines.append("@   - " + name)
+			lines.append("%s   - %s" % (comment_prefix, name))
 		lines.append("")
 	if unsupported:
-		lines.append("@ unsupported pygame calls:")
+		lines.append("%s unsupported pygame calls:" % comment_prefix)
 		for name in sorted(unsupported):
-			lines.append("@   - " + name)
+			lines.append("%s   - %s" % (comment_prefix, name))
 		lines.append("")
-	ordered_calls = ordered_top_level_pygame_calls(py_source)
-	supported_ordered_calls = [name for name in ordered_calls if name in supported]
-	if supported_ordered_calls:
-		lines.append("@ emitted top-level pygame call shims:")
-		for name in supported_ordered_calls:
-			lines.append("@   - " + name)
+	if key_supported:
+		lines.append("%s supported get_pressed key constants:" % comment_prefix)
+		for name in sorted(key_supported):
+			lines.append("%s   - %s" % (comment_prefix, name))
+		lines.append("")
+	if key_unsupported:
+		lines.append("%s unsupported get_pressed key constants:" % comment_prefix)
+		for name in sorted(key_unsupported):
+			lines.append("%s   - %s" % (comment_prefix, name))
 		lines.append("")
 	for line in py_source.splitlines():
-		lines.append("@ " + line.replace("\t", "    "))
-	lines += [
-		"",
-		"\t.global %s" % label,
-		"\t.thumb_func",
-		"%s:" % label,
-	]
-	for name in supported_ordered_calls:
-		lines.append("\tbl\tpy2gba_%s" % safe_symbol(name.replace(".", "_")))
-	lines += [
-		"\tbx\tlr",
-		"",
-	]
-	lines.extend(build_pygame_abi_stubs(supported))
+		lines.append("%s %s" % (comment_prefix, line.replace("\t", "    ")))
+	lines.append("")
+	if target == "gbc":
+		lines += [
+			'SECTION "py2gba_script", ROM0',
+			"GLOBAL %s" % label,
+			"%s:" % label,
+			"\tret",
+			"",
+		]
+	else:
+		lines += [
+			"\t.global %s" % label,
+			"\t.thumb_func",
+			"%s:" % label,
+			"\tbx\tlr",
+			"",
+		]
 	return "\n".join(lines) + "\n"
 
 
 def main() -> int:
-	p = argparse.ArgumentParser(description="Python to GBA Thumb assembly (pygame-aware stub)")
+	p = argparse.ArgumentParser(description="Python to GBA/GBC placeholder assembly")
 	p.add_argument("input", type=Path, help="Input .py file")
 	p.add_argument("-o", "--output", type=Path, required=True, help="Output .s file")
 	p.add_argument("--symbol", default="gba_export", help="Base symbol name (gets _init or _update)")
 	p.add_argument("--kind", choices=("init", "update"), default="update")
+	p.add_argument("--target", choices=("gba", "gbc"), default="gba")
 	p.add_argument(
 		"--strict-pygame",
 		action="store_true",
-		help="Fail if unsupported pygame API calls are detected",
+		help="Fail if unsupported pygame API calls/key constants are detected",
 	)
 	args = p.parse_args()
 	src = args.input.read_text(encoding="utf-8")
 	try:
-		asm = emit_stub(src, args.symbol, args.kind, strict_pygame=args.strict_pygame)
+		asm = emit_asm(
+			src,
+			args.symbol,
+			args.kind,
+			target=args.target,
+			strict_pygame=args.strict_pygame,
+		)
 	except ValueError as exc:
 		print("py2gba:", exc, file=sys.stderr)
 		return 2

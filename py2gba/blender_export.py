@@ -33,13 +33,18 @@ def py2gba_asm(
 	txt_block=None,
 	symbol_base: str = "gba_export",
 	kind: str = "update",
+	target: str = "gba",
 	python_executable: str = "python3",
 ) -> str:
-	"""Transpile Python to ARM Thumb assembly via py2gba CLI/module."""
+	"""Transpile Python to target assembly via py2gba CLI/module."""
 	py_script_path = str(Path(tmp_dir) / "TempGba.py")
 	asm_script_path = py_script_path.replace(".py", ".s")
 	Path(py_script_path).write_text(py_code, encoding="utf-8")
-	py2gba_repo_dir = str(Path(repo_root_dir) / "Py2Gba")
+	repo_path = Path(repo_root_dir)
+	py2gba_repo_candidate = repo_path / "Py2Gb"
+	if not py2gba_repo_candidate.exists():
+		py2gba_repo_candidate = repo_path / "Py2Gba"
+	py2gba_repo_dir = str(py2gba_repo_candidate)
 	env = None
 	if _which("py2gba"):
 		cmd = [
@@ -51,6 +56,8 @@ def py2gba_asm(
 			symbol_base,
 			"--kind",
 			kind,
+			"--target",
+			target,
 		]
 	else:
 		cmd = [
@@ -64,6 +71,8 @@ def py2gba_asm(
 			symbol_base,
 			"--kind",
 			kind,
+			"--target",
+			target,
 		]
 		env = os.environ.copy()
 		env["PYTHONPATH"] = py2gba_repo_dir + os.pathsep + env.get("PYTHONPATH", "")
@@ -377,6 +386,7 @@ def export_gba_py_assembly(
 	update_draw_circles = []
 	builtin_only_quit = True
 	surface_ops = []
+	target = "gbc" if str(gba_out_path).lower().endswith(".gbc") else "gba"
 	sym_i = 0
 	for entry in script_entries:
 		script_txt = entry["code"]
@@ -407,6 +417,7 @@ def export_gba_py_assembly(
 			txt_block=script_obj,
 			symbol_base=base,
 			kind=kind,
+			target=target,
 		)
 		if asm:
 			if is_init:
@@ -415,11 +426,14 @@ def export_gba_py_assembly(
 				update_asm_chunks.append(asm)
 	if init_asm_chunks or update_asm_chunks:
 		base_path = os.path.splitext(os.path.abspath(gba_out_path))[0] + "_gba_py.s"
-		header = "\t.syntax unified\n\t.cpu arm7tdmi\n\t.fpu softvfp\n\t.thumb\n\t.section .text\n"
+		if target == "gbc":
+			header = "; py2gba gbc export\n"
+		else:
+			header = "\t.syntax unified\n\t.cpu arm7tdmi\n\t.fpu softvfp\n\t.thumb\n\t.section .text\n"
 		combined = header + "\n".join(init_asm_chunks + update_asm_chunks) + "\n"
 		Path(base_path).write_text(combined, encoding="utf-8")
 		print(
-			"GBA Python→assembly export:",
+			("%s Python→assembly export:" % target.upper()),
 			base_path,
 			"(%i init + %i update chunk(s))" % (len(init_asm_chunks), len(update_asm_chunks)),
 		)

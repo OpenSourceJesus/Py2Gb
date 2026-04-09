@@ -30,6 +30,17 @@ SUPPORTED_PYGAME_CALLS = {
 	"pygame.font.Font",
 }
 
+SUPPORTED_PYGAME_KEY_CONSTANTS = {
+	"pygame.K_LEFT",
+	"pygame.K_RIGHT",
+	"pygame.K_UP",
+	"pygame.K_DOWN",
+	"pygame.K_A",
+	"pygame.K_B",
+	"pygame.K_START",
+	"pygame.K_SELECT",
+}
+
 
 def safe_symbol(value: str) -> str:
 	text = re.sub(r"[^0-9A-Za-z_]", "_", value)
@@ -87,6 +98,40 @@ def analyze_pygame_usage(py_source: str) -> tuple[set[str], set[str], set[str]]:
 	analyzer.visit(tree)
 	used = analyzer.calls
 	supported = {name for name in used if name in SUPPORTED_PYGAME_CALLS}
+	unsupported = used - supported
+	return used, supported, unsupported
+
+
+def analyze_key_get_pressed_indices(py_source: str) -> tuple[set[str], set[str], set[str]]:
+	"""Analyze pygame key constants used to index get_pressed() results."""
+	tree = ast.parse(py_source)
+	resolver = _PygameCallAnalyzer()
+	resolver.visit(tree)
+	key_state_vars = set()
+	used = set()
+
+	for node in ast.walk(tree):
+		if isinstance(node, ast.Assign):
+			if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+				continue
+			if not isinstance(node.value, ast.Call):
+				continue
+			if resolver._resolve_name(node.value.func) == "pygame.key.get_pressed":
+				key_state_vars.add(node.targets[0].id)
+		elif isinstance(node, ast.Subscript):
+			is_key_state_index = False
+			if isinstance(node.value, ast.Name) and node.value.id in key_state_vars:
+				is_key_state_index = True
+			elif isinstance(node.value, ast.Call):
+				if resolver._resolve_name(node.value.func) == "pygame.key.get_pressed":
+					is_key_state_index = True
+			if not is_key_state_index:
+				continue
+			key_name = resolver._resolve_name(node.slice)
+			if key_name and key_name.startswith("pygame.K_"):
+				used.add(key_name)
+
+	supported = {name for name in used if name in SUPPORTED_PYGAME_KEY_CONSTANTS}
 	unsupported = used - supported
 	return used, supported, unsupported
 

@@ -1,13 +1,12 @@
 # py2gba
 
-`py2gba` converts a Python file into placeholder Game Boy Advance Thumb assembly.
+`py2gba` converts a Python file into placeholder Game Boy assembly entrypoints.
 
 It emits:
 
-- a valid exported symbol function (`<symbol>_init` or `<symbol>_update`) with `bx lr`
+- a valid exported symbol function (`<symbol>_init` or `<symbol>_update`)
 - the source script as assembly comments for traceability
-- pygame ABI weak stubs (`py2gba_pygame_*`) for detected supported pygame calls
-- `bl` call shims for top-level pygame expression statements (for example `pygame.quit()`)
+- pygame usage analysis comments (supported/unsupported)
 
 This keeps the command-line interface stable while the real transpiler is built.
 
@@ -21,16 +20,16 @@ pip install -e .
 
 ## Usage
 
-Generate an update stub:
+Generate a GBA update entrypoint:
 
 ```bash
-py2gba input.py -o out.s --symbol player --kind update
+py2gba input.py -o out.s --symbol player --kind update --target gba
 ```
 
-Generate an init stub:
+Generate a GBC init entrypoint:
 
 ```bash
-py2gba input.py -o out.s --symbol player --kind init
+py2gba input.py -o out.s --symbol player --kind init --target gbc
 ```
 
 Arguments:
@@ -39,6 +38,7 @@ Arguments:
 - `-o, --output`: path for output assembly (`.s`)
 - `--symbol`: base name for exported symbol (suffix `_init` or `_update` is added)
 - `--kind`: one of `init` or `update` (default: `update`)
+- `--target`: one of `gba` or `gbc` (default: `gba`)
 - `--strict-pygame`: fail if unsupported pygame calls are detected
 
 ## Example output symbol names
@@ -48,7 +48,7 @@ Arguments:
 
 ## Status
 
-This is still a placeholder backend, but it is now pygame-aware.
+This is still a placeholder backend, but it is pygame-aware and target-aware.
 
 Supported call paths:
 
@@ -77,7 +77,15 @@ Supported call paths:
 
 Notes:
 
-- These calls generate ABI placeholder labels that you can implement in your GBA runtime.
-- `pygame.quit()` maps to BIOS `SoftReset` (`swi 0x00`) in the weak stub.
 - Unsupported `pygame.*` calls are listed in output comments (and fail with `--strict-pygame`).
-- Replace `emit_stub` in `py2gba/__main__.py` with a real Python-to-Thumb translation pipeline when ready.
+- `pygame.key.get_pressed()[pygame.K_*]` indexing is recognized for:
+  - `pygame.K_LEFT`
+  - `pygame.K_RIGHT`
+  - `pygame.K_UP`
+  - `pygame.K_DOWN`
+  - `pygame.K_A`
+  - `pygame.K_B`
+  - `pygame.K_START`
+  - `pygame.K_SELECT`
+- No pygame ABI weak stubs are emitted.
+- Replace `emit_asm` in `py2gba/__main__.py` with a real translation pipeline when ready.

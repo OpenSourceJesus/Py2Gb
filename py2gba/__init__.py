@@ -1,6 +1,8 @@
 """py2gba package."""
 
 from py2gba.pygame_api import (
+	SUPPORTED_PYGAME_KEY_CONSTANTS,
+	analyze_key_get_pressed_indices,
 	SUPPORTED_PYGAME_CALLS,
 	analyze_pygame_usage,
 	build_pygame_abi_stubs,
@@ -15,6 +17,8 @@ from py2gba.blender_export import (
 
 __all__ = [
 	"SUPPORTED_PYGAME_CALLS",
+	"SUPPORTED_PYGAME_KEY_CONSTANTS",
+	"analyze_key_get_pressed_indices",
 	"analyze_pygame_usage",
 	"build_pygame_abi_stubs",
 	"ordered_top_level_pygame_calls",
