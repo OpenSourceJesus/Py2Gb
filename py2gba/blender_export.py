@@ -243,6 +243,20 @@ def _script_calls_pygame_quit(py_code: str):
 	return False
 
 
+def _inject_gbc_runtime_physics_aliases(py_code: str) -> str:
+	"""Expose host physics dictionaries/simulation for gbc-py scripts."""
+	prelude = (
+		'__js13k_runtime_globals = globals()\n'
+		'rigidbodies = __js13k_runtime_globals.get("rigidBodiesIds", {})\n'
+		'colliders = __js13k_runtime_globals.get("collidersIds", {})\n'
+		'physics = __js13k_runtime_globals.get("sim", None)\n'
+		'PyRapier2d = __js13k_runtime_globals.get("PyRapier2d", None)\n'
+		'get_rigidbody = rigidbodies.get\n'
+		'get_collider = colliders.get\n'
+	)
+	return prelude + (py_code or "")
+
+
 def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
 	output = {"uses_quit": False, "circle_ops": [], "surface_ops": [], "only_builtin": True}
 	try:
@@ -390,6 +404,7 @@ def export_gba_py_assembly(
 	sym_i = 0
 	for entry in script_entries:
 		script_txt = entry["code"]
+		compile_script_txt = _inject_gbc_runtime_physics_aliases(script_txt) if target == "gbc" else script_txt
 		is_init = bool(entry["is_init"])
 		script_obj = entry.get("script_obj")
 		sym_hint = entry.get("symbol_hint", "script")
@@ -411,7 +426,7 @@ def export_gba_py_assembly(
 		base = "gba_%s_%i" % (safe_symbol(sym_hint), sym_i)
 		kind = "init" if is_init else "update"
 		asm = py2gba_asm(
-			script_txt,
+			compile_script_txt,
 			tmp_dir=tmp_dir,
 			repo_root_dir=repo_root_dir,
 			txt_block=script_obj,

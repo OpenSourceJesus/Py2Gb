@@ -89,3 +89,25 @@ Notes:
   - `pygame.K_SELECT`
 - No pygame ABI weak stubs are emitted.
 - Replace `emit_asm` in `py2gba/__main__.py` with a real translation pipeline when ready.
+
+## `gbc-py` physics aliases
+
+When exporting `gbc-py` scripts through the Blender pipeline, the runtime injects
+these aliases so scripts can access physics state directly:
+
+- `rigidbodies` (alias to `rigidBodiesIds`)
+- `colliders` (alias to `collidersIds`)
+- `physics` (alias to `sim`)
+- `PyRapier2d` (module reference when available)
+- `get_rigidbody(name)` and `get_collider(name)` (dict `.get` helpers)
+
+Example:
+
+```python
+player_body = get_rigidbody("Player")
+ground_col = get_collider("Ground")
+
+if player_body is not None and physics is not None:
+    pos = physics.get_rigid_body_position(player_body)
+    # custom logic using pos[0], pos[1]
+```
