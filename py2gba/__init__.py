@@ -12,6 +12,7 @@ from py2gba.pygame_api import (
 from py2gba.blender_export import (
 	export_gba_py_assembly,
 	extract_builtin_script_info,
+	normalize_gb_script_code,
 	py2gba_asm,
 )
 from py2gba.gbc_control import (
@@ -38,6 +39,7 @@ __all__ = [
 	"py2gba_asm",
 	"extract_builtin_script_info",
 	"export_gba_py_assembly",
+	"normalize_gb_script_code",
 	"CONTROL_MODE_NONE",
 	"CONTROL_MODE_DPAD_LR",
 	"CONTROL_MODE_DPAD_LR_A_JUMP",
