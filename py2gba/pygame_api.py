@@ -25,6 +25,8 @@ SUPPORTED_PYGAME_CALLS = {
 	"pygame.draw.polygon",
 	"pygame.transform.rotate",
 	"pygame.transform.scale",
+	"pygame.transform.smoothscale",
+	"pygame.transform.rotozoom",
 	"pygame.image.load",
 	"pygame.mixer.Sound",
 	"pygame.font.Font",

@@ -278,16 +278,19 @@ def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
 			target = stmt.targets[0]
 			target_path = _attr_path(target)
 			if target_path:
+				dst_member = None
+				if owner_name:
+					if target_path.startswith("this."):
+						dst_member = target_path.split(".", 1)[1]
+					else:
+						dst_member = "__local_" + safe_symbol(target_path)
 				value = stmt.value
 				if isinstance(value, ast.Call) and resolve_name(value.func) == "pygame.Surface" and len(value.args) >= 1:
 					size = _parse_surface_size(value.args[0], resolve_name)
 					if size is not None:
 						ref = {"owner_name": owner_name, "member": None}
 						if owner_name:
-							if target_path.startswith("this."):
-								ref["member"] = target_path.split(".", 1)[1]
-							else:
-								ref["member"] = "__local_" + safe_symbol(target_path)
+							ref["member"] = dst_member
 						surface_refs[target_path] = ref
 						if ref["member"] is not None:
 							output["surface_ops"].append(
@@ -299,6 +302,46 @@ def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
 								}
 							)
 						continue
+				if isinstance(value, ast.Call):
+					transform_name = resolve_name(value.func)
+					if transform_name in {
+						"pygame.transform.scale",
+						"pygame.transform.smoothscale",
+						"pygame.transform.rotozoom",
+					}:
+						src_node = value.args[0] if len(value.args) >= 1 else None
+						src_ref = _resolve_surface_ref(src_node, owner_name, surface_refs) if src_node is not None else None
+						if (
+							owner_name
+							and dst_member is not None
+							and src_ref is not None
+							and src_ref.get("member") is not None
+						):
+							op = {
+								"op": "transform_surface_member",
+								"owner_name": owner_name,
+								"member": dst_member,
+								"src_owner_name": src_ref.get("owner_name"),
+								"src_member": src_ref.get("member"),
+							}
+							if transform_name in {"pygame.transform.scale", "pygame.transform.smoothscale"} and len(value.args) >= 2:
+								size = _parse_surface_size(value.args[1], resolve_name)
+								if size is not None:
+									op["method"] = "smoothscale" if transform_name.endswith(".smoothscale") else "scale"
+									op["size"] = size
+									output["surface_ops"].append(op)
+									surface_refs[target_path] = {"owner_name": owner_name, "member": dst_member}
+									continue
+							if transform_name == "pygame.transform.rotozoom" and len(value.args) >= 3:
+								angle = _eval_number_node(value.args[1])
+								scale = _eval_number_node(value.args[2])
+								if angle is not None and scale is not None:
+									op["method"] = "rotozoom"
+									op["angle"] = float(angle)
+									op["scale"] = float(scale)
+									output["surface_ops"].append(op)
+									surface_refs[target_path] = {"owner_name": owner_name, "member": dst_member}
+									continue
 				src_ref = _resolve_surface_ref(value, owner_name, surface_refs)
 				if src_ref is not None:
 					surface_refs[target_path] = src_ref
