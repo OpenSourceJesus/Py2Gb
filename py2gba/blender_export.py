@@ -694,7 +694,7 @@ def _parse_surface_size(node, resolve_name):
 	return [w, h]
 
 
-def _parse_surface_scroll_delta(call_node, resolve_name):
+def _parse_xy_delta(call_node, resolve_name, x_keys=("x",), y_keys=("y",)):
 	if not isinstance(call_node, ast.Call):
 		return None
 	dx = None
@@ -713,13 +713,44 @@ def _parse_surface_scroll_delta(call_node, resolve_name):
 			if dx is not None:
 				dy = 0.0
 	for kw in list(call_node.keywords or []):
-		if kw.arg == "dx":
+		if kw.arg in set(x_keys):
 			dx = _eval_number_node(kw.value)
-		elif kw.arg == "dy":
+		elif kw.arg in set(y_keys):
 			dy = _eval_number_node(kw.value)
 	if dx is None or dy is None:
 		return None
 	return [float(dx), float(dy)]
+
+
+def _parse_surface_scroll_delta(call_node, resolve_name):
+	return _parse_xy_delta(call_node, resolve_name, x_keys=("dx",), y_keys=("dy",))
+
+
+def _parse_rect_move_delta(call_node, resolve_name):
+	return _parse_xy_delta(call_node, resolve_name, x_keys=("x", "dx"), y_keys=("y", "dy"))
+
+
+def _parse_blit_position(call_node, resolve_name):
+	if not isinstance(call_node, ast.Call) or len(call_node.args) < 2:
+		return None
+	dest_node = call_node.args[1]
+	pos = _eval_vector2_node(dest_node, resolve_name)
+	if pos is not None:
+		return [float(pos[0]), float(pos[1])]
+	if isinstance(dest_node, ast.Call) and isinstance(dest_node.func, ast.Attribute) and dest_node.func.attr == "move":
+		move_delta = _parse_rect_move_delta(dest_node, resolve_name)
+		if move_delta is None:
+			return None
+		base = dest_node.func.value
+		if (
+			isinstance(base, ast.Call)
+			and isinstance(base.func, ast.Attribute)
+			and base.func.attr == "get_rect"
+			and len(base.args or []) == 0
+			and len(base.keywords or []) == 0
+		):
+			return [float(move_delta[0]), float(move_delta[1])]
+	return None
 
 
 def _is_display_get_surface_node(node, resolve_name):
@@ -910,6 +941,36 @@ def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
 								"op": "scroll_display_surface",
 								"dx": float(delta[0]),
 								"dy": float(delta[1]),
+							}
+						)
+						continue
+			blit_func = stmt.value.func
+			if isinstance(blit_func, ast.Attribute) and blit_func.attr == "blit" and len(stmt.value.args) >= 2:
+				src_ref = _resolve_surface_ref(stmt.value.args[0], owner_name, surface_refs)
+				pos = _parse_blit_position(stmt.value, resolve_name)
+				if src_ref is not None and src_ref.get("member") is not None and pos is not None:
+					dst_ref = _resolve_surface_ref(blit_func.value, owner_name, surface_refs)
+					if dst_ref is not None and dst_ref.get("member") is not None:
+						output["surface_ops"].append(
+							{
+								"op": "blit_surface_member",
+								"owner_name": dst_ref.get("owner_name"),
+								"member": dst_ref.get("member"),
+								"src_owner_name": src_ref.get("owner_name"),
+								"src_member": src_ref.get("member"),
+								"x": float(pos[0]),
+								"y": float(pos[1]),
+							}
+						)
+						continue
+					if _is_display_get_surface_node(blit_func.value, resolve_name):
+						output["display_ops"].append(
+							{
+								"op": "blit_display_surface",
+								"src_owner_name": src_ref.get("owner_name"),
+								"src_member": src_ref.get("member"),
+								"x": float(pos[0]),
+								"y": float(pos[1]),
 							}
 						)
 						continue
