@@ -694,6 +694,38 @@ def _parse_surface_size(node, resolve_name):
 	return [w, h]
 
 
+def _parse_surface_scroll_delta(call_node, resolve_name):
+	if not isinstance(call_node, ast.Call):
+		return None
+	dx = None
+	dy = None
+	args = list(call_node.args or [])
+	if len(args) >= 2:
+		dx = _eval_number_node(args[0])
+		dy = _eval_number_node(args[1])
+	elif len(args) == 1:
+		vec = _eval_vector2_node(args[0], resolve_name)
+		if vec is not None:
+			dx = vec[0]
+			dy = vec[1]
+		else:
+			dx = _eval_number_node(args[0])
+			if dx is not None:
+				dy = 0.0
+	for kw in list(call_node.keywords or []):
+		if kw.arg == "dx":
+			dx = _eval_number_node(kw.value)
+		elif kw.arg == "dy":
+			dy = _eval_number_node(kw.value)
+	if dx is None or dy is None:
+		return None
+	return [float(dx), float(dy)]
+
+
+def _is_display_get_surface_node(node, resolve_name):
+	return isinstance(node, ast.Call) and resolve_name(node.func) == "pygame.display.get_surface"
+
+
 def _resolve_surface_ref(node, owner_name, refs):
 	path = _attr_path(node)
 	if not path:
@@ -733,7 +765,7 @@ def _inject_gbc_runtime_physics_aliases(py_code: str) -> str:
 
 
 def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
-	output = {"uses_quit": False, "circle_ops": [], "surface_ops": [], "only_builtin": True}
+	output = {"uses_quit": False, "circle_ops": [], "surface_ops": [], "display_ops": [], "only_builtin": True}
 	try:
 		tree = ast.parse(py_code)
 	except Exception:
@@ -856,6 +888,31 @@ def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
 						}
 					)
 					continue
+			scroll_func = stmt.value.func
+			if isinstance(scroll_func, ast.Attribute) and scroll_func.attr == "scroll":
+				delta = _parse_surface_scroll_delta(stmt.value, resolve_name)
+				if delta is not None:
+					surface_ref = _resolve_surface_ref(scroll_func.value, owner_name, surface_refs)
+					if surface_ref is not None and surface_ref.get("member") is not None:
+						output["surface_ops"].append(
+							{
+								"op": "scroll_surface_member",
+								"owner_name": surface_ref.get("owner_name"),
+								"member": surface_ref.get("member"),
+								"dx": float(delta[0]),
+								"dy": float(delta[1]),
+							}
+						)
+						continue
+					if _is_display_get_surface_node(scroll_func.value, resolve_name):
+						output["display_ops"].append(
+							{
+								"op": "scroll_display_surface",
+								"dx": float(delta[0]),
+								"dy": float(delta[1]),
+							}
+						)
+						continue
 			if call_name == "pygame.draw.circle" and len(stmt.value.args) >= 4:
 				surface_ref = _resolve_surface_ref(stmt.value.args[0], owner_name, surface_refs)
 				color = _eval_color_node(stmt.value.args[1], resolve_name)
@@ -916,6 +973,8 @@ def export_gba_py_assembly(
 	update_quit = False
 	init_draw_circles = []
 	update_draw_circles = []
+	init_display_ops = []
+	update_display_ops = []
 	builtin_only_quit = True
 	surface_ops = []
 	target = "gbc" if str(gba_out_path).lower().endswith(".gbc") else "gba"
@@ -935,8 +994,10 @@ def export_gba_py_assembly(
 			update_quit = True
 		if is_init:
 			init_draw_circles += builtin_info["circle_ops"]
+			init_display_ops += builtin_info.get("display_ops", [])
 		else:
 			update_draw_circles += builtin_info["circle_ops"]
+			update_display_ops += builtin_info.get("display_ops", [])
 		surface_ops += builtin_info.get("surface_ops", [])
 		if not builtin_info["only_builtin"]:
 			builtin_only_quit = False
@@ -978,6 +1039,10 @@ def export_gba_py_assembly(
 			print(
 				"Built-in bitmap ROM hook: pygame.draw.circle() from update scripts is baked once at export time (static snapshot)."
 			)
+		if init_display_ops or update_display_ops:
+			print(
+				"Built-in bitmap ROM hook: pygame.display.get_surface().scroll() is baked into exported display frames."
+			)
 		if surface_ops:
 			print(
 				"Built-in bitmap ROM hook: pygame.Surface member changes in gba-py scripts are baked into exported image surfaces."
@@ -993,6 +1058,8 @@ def export_gba_py_assembly(
 		"update_quit": update_quit,
 		"init_draw_circles": init_draw_circles,
 		"update_draw_circles": update_draw_circles,
+		"init_display_ops": init_display_ops,
+		"update_display_ops": update_display_ops,
 		"surface_ops": surface_ops,
 		"builtin_only_quit": builtin_only_quit,
 	}
