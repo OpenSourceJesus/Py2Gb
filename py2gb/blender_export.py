@@ -223,6 +223,16 @@ def gbc_script_physics_prelude() -> str:
 		'    sim = _GbcPhysicsSimCompat()\n'
 		'if not hasattr(sim, "set_linear_velocity"):\n'
 		'    sim = _GbcPhysicsSimCompat()\n'
+		'class _GbcMutableSimProxy:\n'
+		'    def __init__(self, _sim):\n'
+		'        self._sim = _sim\n'
+		'    def __getattr__(self, _name):\n'
+		'        return getattr(self._sim, _name)\n'
+		'if (sim is not None) and not isinstance(sim, _GbcMutableSimProxy):\n'
+		'    try:\n'
+		'        sim = _GbcMutableSimProxy(sim)\n'
+		'    except:\n'
+		'        pass\n'
 		'def _js13k_gbc_resolve_rb_handle(_rb):\n'
 		'    try:\n'
 		'        if isinstance(_rb, str):\n'
@@ -249,7 +259,7 @@ def gbc_script_physics_prelude() -> str:
 		'        ]\n'
 		'    except:\n'
 		'        return [0.0, 0.0]\n'
-		'if hasattr(sim, "get_rigid_body_position") and not getattr(sim, "_js13k_gbc_get_rbpos_safe", False):\n'
+		'if False and hasattr(sim, "get_rigid_body_position") and not getattr(sim, "_js13k_gbc_get_rbpos_safe", False):\n'
 		'    _js13k_gbc_orig_get_rigid_body_position = sim.get_rigid_body_position\n'
 		'    def _js13k_gbc_get_rigid_body_position_safe(rigidBody):\n'
 		'        rb_resolved = _js13k_gbc_resolve_rb_handle(rigidBody)\n'
@@ -264,15 +274,21 @@ def gbc_script_physics_prelude() -> str:
 		'            except:\n'
 		'                pos = None\n'
 		'        return _js13k_gbc_unbias_pos_for_get(pos)\n'
-		'    sim.get_rigid_body_position = _js13k_gbc_get_rigid_body_position_safe\n'
-		'    sim._js13k_gbc_get_rbpos_safe = True\n'
-		'if hasattr(sim, "set_rigid_body_position") and not getattr(sim, "_js13k_gbc_set_rbpos_safe", False):\n'
+		'    try:\n'
+		'        sim.get_rigid_body_position = _js13k_gbc_get_rigid_body_position_safe\n'
+		'        sim._js13k_gbc_get_rbpos_safe = True\n'
+		'    except:\n'
+		'        pass\n'
+		'if False and hasattr(sim, "set_rigid_body_position") and not getattr(sim, "_js13k_gbc_set_rbpos_safe", False):\n'
 		'    _js13k_gbc_orig_set_rigid_body_position = sim.set_rigid_body_position\n'
 		'    def _js13k_gbc_set_rigid_body_position_safe(rigidBody, pos, wakeUp = True):\n'
 		'        return _js13k_gbc_orig_set_rigid_body_position(rigidBody, _js13k_gbc_bias_pos_for_set(pos), wakeUp)\n'
-		'    sim.set_rigid_body_position = _js13k_gbc_set_rigid_body_position_safe\n'
-		'    sim._js13k_gbc_set_rbpos_safe = True\n'
-		'if hasattr(sim, "get_collider_position") and not getattr(sim, "_js13k_gbc_get_colpos_safe", False):\n'
+		'    try:\n'
+		'        sim.set_rigid_body_position = _js13k_gbc_set_rigid_body_position_safe\n'
+		'        sim._js13k_gbc_set_rbpos_safe = True\n'
+		'    except:\n'
+		'        pass\n'
+		'if False and hasattr(sim, "get_collider_position") and not getattr(sim, "_js13k_gbc_get_colpos_safe", False):\n'
 		'    _js13k_gbc_orig_get_collider_position = sim.get_collider_position\n'
 		'    def _js13k_gbc_get_collider_position_safe(collider):\n'
 		'        pos = None\n'
@@ -281,15 +297,21 @@ def gbc_script_physics_prelude() -> str:
 		'        except:\n'
 		'            pos = None\n'
 		'        return _js13k_gbc_unbias_pos_for_get(pos)\n'
-		'    sim.get_collider_position = _js13k_gbc_get_collider_position_safe\n'
-		'    sim._js13k_gbc_get_colpos_safe = True\n'
-		'if hasattr(sim, "set_collider_position") and not getattr(sim, "_js13k_gbc_set_colpos_safe", False):\n'
+		'    try:\n'
+		'        sim.get_collider_position = _js13k_gbc_get_collider_position_safe\n'
+		'        sim._js13k_gbc_get_colpos_safe = True\n'
+		'    except:\n'
+		'        pass\n'
+		'if False and hasattr(sim, "set_collider_position") and not getattr(sim, "_js13k_gbc_set_colpos_safe", False):\n'
 		'    _js13k_gbc_orig_set_collider_position = sim.set_collider_position\n'
 		'    def _js13k_gbc_set_collider_position_safe(collider, pos, wakeUp = True):\n'
 		'        return _js13k_gbc_orig_set_collider_position(collider, _js13k_gbc_bias_pos_for_set(pos), wakeUp)\n'
-		'    sim.set_collider_position = _js13k_gbc_set_collider_position_safe\n'
-		'    sim._js13k_gbc_set_colpos_safe = True\n'
-		'if hasattr(sim, "set_linear_velocity") and not getattr(sim, "_js13k_gbc_flip_linvel_y", False):\n'
+		'    try:\n'
+		'        sim.set_collider_position = _js13k_gbc_set_collider_position_safe\n'
+		'        sim._js13k_gbc_set_colpos_safe = True\n'
+		'    except:\n'
+		'        pass\n'
+		'if False and hasattr(sim, "set_linear_velocity") and not getattr(sim, "_js13k_gbc_flip_linvel_y", False):\n'
 		'    _js13k_gbc_orig_set_linear_velocity = sim.set_linear_velocity\n'
 		'    def _js13k_gbc_set_linear_velocity_flipy(rigidBody, vel, wakeUp = True):\n'
 		'        try:\n'
@@ -299,9 +321,12 @@ def gbc_script_physics_prelude() -> str:
 		'        except:\n'
 		'            vel2 = vel\n'
 		'        return _js13k_gbc_orig_set_linear_velocity(rigidBody, vel2, wakeUp)\n'
-		'    sim.set_linear_velocity = _js13k_gbc_set_linear_velocity_flipy\n'
-		'    sim._js13k_gbc_flip_linvel_y = True\n'
-		'if hasattr(sim, "get_linear_velocity") and hasattr(sim, "get_rigid_body_position") and not getattr(sim, "_js13k_gbc_get_linvel_safe", False):\n'
+		'    try:\n'
+		'        sim.set_linear_velocity = _js13k_gbc_set_linear_velocity_flipy\n'
+		'        sim._js13k_gbc_flip_linvel_y = True\n'
+		'    except:\n'
+		'        pass\n'
+		'if False and hasattr(sim, "get_linear_velocity") and hasattr(sim, "get_rigid_body_position") and not getattr(sim, "_js13k_gbc_get_linvel_safe", False):\n'
 		'    _js13k_gbc_orig_get_linear_velocity = sim.get_linear_velocity\n'
 		'    _js13k_gbc_prev_linvel_pos = {}\n'
 		'    _js13k_gbc_prev_linvel_t = {}\n'
@@ -342,8 +367,11 @@ def gbc_script_physics_prelude() -> str:
 		'        except:\n'
 		'            pass\n'
 		'        return [vx, vy]\n'
-		'    sim.get_linear_velocity = _js13k_gbc_get_linear_velocity_safe\n'
-		'    sim._js13k_gbc_get_linvel_safe = True\n'
+		'    try:\n'
+		'        sim.get_linear_velocity = _js13k_gbc_get_linear_velocity_safe\n'
+		'        sim._js13k_gbc_get_linvel_safe = True\n'
+		'    except:\n'
+		'        pass\n'
 		'def _js13k_gbc_camel_to_snake(_name):\n'
 		'    if not isinstance(_name, str):\n'
 		'        return _name\n'
@@ -397,12 +425,9 @@ def gbc_script_physics_prelude() -> str:
 		'    return cast_collider_fn(shape, shape_vel, shape_pos, shape_rot, collision_group_filter)\n'
 		'def _js13k_gbc_cast_shape_compat(*args, **kwargs):\n'
 		'    _js13k_gbc_validate_cast_shape_args(*args, **kwargs)\n'
-		'    cast_shape_fn = _js13k_gbc_get_sim_method("cast_shape")\n'
-		'    if cast_shape_fn is not None:\n'
-		'        return cast_shape_fn(*args, **kwargs)\n'
 		'    cast_collider_fn = _js13k_gbc_get_sim_method("cast_collider")\n'
 		'    if cast_collider_fn is None:\n'
-		'        raise AttributeError("world.castShape is unavailable: sim has neither cast_shape nor cast_collider")\n'
+		'        raise AttributeError("world.castShape is unavailable: sim.cast_collider is missing")\n'
 		'    return _js13k_gbc_cast_shape_via_collider(cast_collider_fn, *args, **kwargs)\n'
 		'class _GbcRapierWorldCompat:\n'
 		'    def __init__(self, _sim):\n'
@@ -416,17 +441,12 @@ def gbc_script_physics_prelude() -> str:
 		'        if fn is not None:\n'
 		'            return fn\n'
 		'        raise AttributeError(_name)\n'
-		'if _js13k_gbc_get_sim_method("cast_shape") is not None and not getattr(sim, "_js13k_gbc_cast_shape_validated", False):\n'
-		'    _js13k_gbc_orig_cast_shape = _js13k_gbc_get_sim_method("cast_shape")\n'
-		'    def _js13k_gbc_cast_shape_checked(*args, **kwargs):\n'
-		'        _js13k_gbc_validate_cast_shape_args(*args, **kwargs)\n'
-		'        return _js13k_gbc_orig_cast_shape(*args, **kwargs)\n'
-		'    sim.cast_shape = _js13k_gbc_cast_shape_checked\n'
-		'    sim._js13k_gbc_cast_shape_validated = True\n'
-		'elif _js13k_gbc_get_sim_method("cast_collider") is not None:\n'
+		'if _js13k_gbc_get_sim_method("cast_collider") is not None:\n'
 		'    _js13k_gbc_cast_collider_fn = _js13k_gbc_get_sim_method("cast_collider")\n'
-		'    sim.cast_shape = (lambda *args, **kwargs: _js13k_gbc_cast_shape_via_collider(_js13k_gbc_cast_collider_fn, *args, **kwargs))\n'
-		'    sim._js13k_gbc_cast_shape_validated = True\n'
+		'    try:\n'
+		'        sim._js13k_gbc_cast_shape_validated = True\n'
+		'    except:\n'
+		'        pass\n'
 		'rigidbodies = rigidBodies\n'
 		'world = _GbcRapierWorldCompat(sim)\n'
 		'physics = sim\n'
@@ -724,6 +744,35 @@ def _parse_surface_scroll_delta(call_node, resolve_name):
 	return _parse_xy_delta(call_node, resolve_name, x_keys=("dx",), y_keys=("dy",))
 
 
+def _serialize_runtime_expr_node(node):
+	num = _eval_number_node(node)
+	if num is not None:
+		return float(num)
+	try:
+		return "<expr:" + ast.unparse(node) + ">"
+	except Exception:
+		return "<expr:0>"
+
+
+def _parse_set_camera_position_args(call_node):
+	if not isinstance(call_node, ast.Call):
+		return None
+	args = list(call_node.args or [])
+	x_node = None
+	y_node = None
+	if len(args) >= 2:
+		x_node = args[0]
+		y_node = args[1]
+	for kw in list(call_node.keywords or []):
+		if kw.arg == "x":
+			x_node = kw.value
+		elif kw.arg == "y":
+			y_node = kw.value
+	if x_node is None or y_node is None:
+		return None
+	return _serialize_runtime_expr_node(x_node), _serialize_runtime_expr_node(y_node)
+
+
 def _parse_rect_move_delta(call_node, resolve_name):
 	return _parse_xy_delta(call_node, resolve_name, x_keys=("x", "dx"), y_keys=("y", "dy"))
 
@@ -895,6 +944,17 @@ def extract_builtin_script_info(py_code: str, owner_name: str | None = None):
 					continue
 		if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
 			call_name = resolve_name(stmt.value.func)
+			if isinstance(stmt.value.func, ast.Name) and stmt.value.func.id == "set_camera_position":
+				cam_args = _parse_set_camera_position_args(stmt.value)
+				if cam_args is not None:
+					output["display_ops"].append(
+						{
+							"op": "set_display_camera_pos",
+							"x": cam_args[0],
+							"y": cam_args[1],
+						}
+					)
+					continue
 			if call_name == "pygame.quit":
 				output["uses_quit"] = True
 				continue
